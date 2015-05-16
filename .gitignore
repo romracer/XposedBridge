@@ -1,3 +1,6 @@
+/.gradle
 /gen
 /bin
+/build
 /XposedBridgeApi*.jar
+/local.properties

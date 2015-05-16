@@ -1,0 +1,8 @@
+# location of the Android SDK
+sdk.dir=/path/to/android-sdk-linux
+
+key.store=/path/to/release.keystore
+key.alias=release
+
+store.pass=password
+key.pass=changeme
