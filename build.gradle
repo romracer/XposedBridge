@@ -34,7 +34,8 @@ android {
                 srcDirs = ['.']
                 exclude 'assets', 'src', 'lib', 'HiddenAPIStubs'
                 exclude 'build', 'bin', 'gen'
-                exclude '*.launch', '*.bat', '*.jardesc', '*.properties', '*.xml', '*.gradle', '.*'
+                exclude '*.launch', '*.bat', '*.jardesc', '*.properties', '*.xml', '*.gradle', 'gradle*'
+                exclude '*.sample', 'README.md', '.*'
             }
         }
 
