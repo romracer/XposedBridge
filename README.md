@@ -1,14 +1,9 @@
-Your local.properties should look something like this:
+Create a local.properties file in the root of this repository.
+It should be a text file that looks something like this:
 
 ```
-# location of the SDK. This is only used by Ant
+# location of the Android SDK
 sdk.dir=/path/to/android-sdk-linux
-
-key.store=/path/to/release.keystore
-key.alias=release
-
-store.pass=password
-key.pass=changeme
 ```
 
 Build with ```./gradlew clean && ./gradlew assembleRelease```
