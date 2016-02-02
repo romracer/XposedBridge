@@ -1,8 +1,9 @@
 package de.robv.android.xposed.callbacks;
 
+import android.os.Bundle;
+
 import java.io.Serializable;
 
-import android.os.Bundle;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedBridge.CopyOnWriteSortedSet;
 
@@ -54,14 +55,14 @@ public abstract class XCallback implements Comparable<XCallback> {
 
 		private static class SerializeWrapper implements Serializable {
 			private static final long serialVersionUID = 1L;
-			private Object object;
+			private final Object object;
 			public SerializeWrapper(Object o) {
 				object = o;
 			}
 		}
 	}
 
-	public static final void callAll(Param param) {
+	public static void callAll(Param param) {
 		if (param.callbacks == null)
 			throw new IllegalStateException("This object was not created for use with callAll");
 
@@ -72,7 +73,7 @@ public abstract class XCallback implements Comparable<XCallback> {
 		}
 	}
 
-	protected void call(Param param) throws Throwable {};
+	protected void call(Param param) throws Throwable {}
 
 	@Override
 	public int compareTo(XCallback other) {

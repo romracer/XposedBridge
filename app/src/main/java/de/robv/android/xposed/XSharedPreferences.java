@@ -1,14 +1,6 @@
 package de.robv.android.xposed;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
-import org.xmlpull.v1.XmlPullParserException;
-
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Environment;
@@ -16,6 +8,15 @@ import android.preference.PreferenceManager;
 import android.util.Log;
 
 import com.android.internal.util.XmlUtils;
+
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 import de.robv.android.xposed.services.FileResult;
 
@@ -75,6 +76,7 @@ public final class XSharedPreferences implements SharedPreferences {
 	 *
 	 * @return {@code true} in case the file could be made world-readable.
 	 */
+	@SuppressLint("SetWorldReadable")
 	public boolean makeWorldReadable() {
 		if (!SELinuxHelper.getAppDataFileService().hasDirectFileAccess())
 			return false; // It doesn't make much sense to make the file readable if we wouldn't be able to access it anyway.

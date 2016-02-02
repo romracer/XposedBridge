@@ -1,11 +1,22 @@
 package de.robv.android.xposed;
 
-import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
-import static de.robv.android.xposed.XposedHelpers.getBooleanField;
-import static de.robv.android.xposed.XposedHelpers.getIntField;
-import static de.robv.android.xposed.XposedHelpers.getObjectField;
-import static de.robv.android.xposed.XposedHelpers.setObjectField;
-import static de.robv.android.xposed.XposedHelpers.setStaticObjectField;
+import android.annotation.SuppressLint;
+import android.app.ActivityThread;
+import android.app.AndroidAppHelper;
+import android.app.LoadedApk;
+import android.content.ComponentName;
+import android.content.pm.ApplicationInfo;
+import android.content.res.CompatibilityInfo;
+import android.content.res.Resources;
+import android.content.res.TypedArray;
+import android.content.res.XResources;
+import android.content.res.XResources.XTypedArray;
+import android.os.Build;
+import android.os.Process;
+import android.util.Log;
+
+import com.android.internal.os.RuntimeInit;
+import com.android.internal.os.ZygoteInit;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -25,23 +36,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import com.android.internal.os.RuntimeInit;
-import com.android.internal.os.ZygoteInit;
-
-import android.annotation.SuppressLint;
-import android.app.ActivityThread;
-import android.app.AndroidAppHelper;
-import android.app.LoadedApk;
-import android.content.ComponentName;
-import android.content.pm.ApplicationInfo;
-import android.content.res.CompatibilityInfo;
-import android.content.res.Resources;
-import android.content.res.TypedArray;
-import android.content.res.XResources;
-import android.content.res.XResources.XTypedArray;
-import android.os.Build;
-import android.os.Process;
-import android.util.Log;
 import dalvik.system.PathClassLoader;
 import de.robv.android.xposed.XC_MethodHook.MethodHookParam;
 import de.robv.android.xposed.callbacks.XC_InitPackageResources;
@@ -51,6 +45,14 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage.LoadPackageParam;
 import de.robv.android.xposed.callbacks.XCallback;
 import de.robv.android.xposed.services.BaseService;
 
+import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
+import static de.robv.android.xposed.XposedHelpers.getBooleanField;
+import static de.robv.android.xposed.XposedHelpers.getIntField;
+import static de.robv.android.xposed.XposedHelpers.getObjectField;
+import static de.robv.android.xposed.XposedHelpers.setObjectField;
+import static de.robv.android.xposed.XposedHelpers.setStaticObjectField;
+
+@SuppressWarnings("JniMissingFunction")
 public final class XposedBridge {
 	public static final String TAG = "Xposed";
 	public static final String INSTALLER_PACKAGE_NAME = "de.robv.android.xposed.installer";
@@ -85,6 +87,7 @@ public final class XposedBridge {
 	/**
 	 * Called when native methods and other things are initialized, but before preloading classes etc.
 	 */
+	@SuppressWarnings("deprecation")
 	protected static void main(String[] args) {
 		// Initialize the Xposed framework and modules
 		try {
@@ -120,7 +123,7 @@ public final class XposedBridge {
 		protected static void main(String[] args) {
 			try {
 				startClassName = getStartClassName();
-			} catch (Throwable ignored) {};
+			} catch (Throwable ignored) {}
 
 			isZygote = false;
 			XposedBridge.main(args);
@@ -214,13 +217,15 @@ public final class XposedBridge {
 							lpparam.isFirstApplication = true;
 							XC_LoadPackage.callAll(lpparam);
 
-							if (Build.VERSION.SDK_INT >= 21 && Build.VERSION.SDK_INT <= 22) {
+							if (Build.VERSION.SDK_INT >= 21) {
 								// Force dex2oat while the system is still booting to ensure that system content providers work.
 								findAndHookMethod("com.android.server.pm.PackageManagerService", cl, "performDexOpt",
 										String.class, String.class, boolean.class, new XC_MethodHook() {
 									@Override
 									protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-										if (getObjectField(param.thisObject, "mDeferredDexOpt") != null)
+										Object instance = (Build.VERSION.SDK_INT >= 23)
+												? getObjectField(param.thisObject, "mPackageDexOptimizer") : param.thisObject;
+										if (getObjectField(instance, "mDeferredDexOpt") != null)
 											param.args[2] = true;
 									}
 								});
@@ -242,7 +247,7 @@ public final class XposedBridge {
 				if (packageName.equals("android") || !loadedPackagesInProcess.add(packageName))
 					return;
 
-				if ((Boolean) getBooleanField(loadedApk, "mIncludeCode") == false)
+				if (!getBooleanField(loadedApk, "mIncludeCode"))
 					return;
 
 				LoadPackageParam lpparam = new LoadPackageParam(sLoadedPackageCallbacks);
@@ -570,11 +575,11 @@ public final class XposedBridge {
 				parameterTypes = null;
 				returnType = null;
 			} else if (hookMethod instanceof Method) {
-				slot = (int) getIntField(hookMethod, "slot");
+				slot = getIntField(hookMethod, "slot");
 				parameterTypes = ((Method) hookMethod).getParameterTypes();
 				returnType = ((Method) hookMethod).getReturnType();
 			} else {
-				slot = (int) getIntField(hookMethod, "slot");
+				slot = getIntField(hookMethod, "slot");
 				parameterTypes = ((Constructor<?>) hookMethod).getParameterTypes();
 				returnType = null;
 			}
@@ -601,6 +606,7 @@ public final class XposedBridge {
 		callbacks.remove(callback);
 	}
 
+	@SuppressWarnings("UnusedReturnValue")
 	public static Set<XC_MethodHook.Unhook> hookAllMethods(Class<?> hookClass, String methodName, XC_MethodHook callback) {
 		Set<XC_MethodHook.Unhook> unhooks = new HashSet<XC_MethodHook.Unhook>();
 		for (Member method : hookClass.getDeclaredMethods())
@@ -609,6 +615,7 @@ public final class XposedBridge {
 		return unhooks;
 	}
 
+	@SuppressWarnings("UnusedReturnValue")
 	public static Set<XC_MethodHook.Unhook> hookAllConstructors(Class<?> hookClass, XC_MethodHook callback) {
 		Set<XC_MethodHook.Unhook> unhooks = new HashSet<XC_MethodHook.Unhook>();
 		for (Member constructor : hookClass.getDeclaredConstructors())
@@ -708,6 +715,7 @@ public final class XposedBridge {
 	/**
 	 * Get notified when a package is loaded. This is especially useful to hook some package-specific methods.
 	 */
+	@SuppressWarnings("UnusedReturnValue")
 	public static XC_LoadPackage.Unhook hookLoadPackage(XC_LoadPackage callback) {
 		synchronized (sLoadedPackageCallbacks) {
 			sLoadedPackageCallbacks.add(callback);
@@ -725,6 +733,7 @@ public final class XposedBridge {
 	 * Get notified when the resources for a package are loaded. In callbacks, resource replacements can be created.
 	 * @return
 	 */
+	@SuppressWarnings("UnusedReturnValue")
 	public static XC_InitPackageResources.Unhook hookInitPackageResources(XC_InitPackageResources callback) {
 		synchronized (sInitPackageResourcesCallbacks) {
 			sInitPackageResourcesCallbacks.add(callback);
@@ -833,6 +842,7 @@ public final class XposedBridge {
 	public static class CopyOnWriteSortedSet<E> {
 		private transient volatile Object[] elements = EMPTY_ARRAY;
 
+		@SuppressWarnings("UnusedReturnValue")
 		public synchronized boolean add(E e) {
 			int index = indexOf(e);
 			if (index >= 0)
@@ -846,6 +856,7 @@ public final class XposedBridge {
 			return true;
 		}
 
+		@SuppressWarnings("UnusedReturnValue")
 		public synchronized boolean remove(E e) {
 			int index = indexOf(e);
 			if (index == -1)
