@@ -4,7 +4,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 23
-    buildToolsVersion "23.0.2"
+    buildToolsVersion "23.0.3"
 
     defaultConfig {
         minSdkVersion 15
@@ -27,23 +27,107 @@ android {
     // As they have to be injected before the official SDK classes and must not be part of the
     // final JAR/APK, the best way seems to compile them in a separate project and use some dirty
     // magic to add its output directory to all variants' configuration.
-    def stubs = project(':hiddenapistubs')
-    stubs.afterEvaluate {
-        stubs.android.compileSdkVersion compileSdkVersion
-        stubs.android.buildToolsVersion buildToolsVersion
-        preBuild.dependsOn stubs.assembleRelease
-        stubs.preBuild << {
-            def stubsCompiler = stubs.android.libraryVariants[0].javaCompiler
-            def stubsDestPath = stubsCompiler.destinationDir.getAbsolutePath()
+    def hiddenapi = project(':hiddenapistubs')
+    hiddenapi.afterEvaluate {
+        hiddenapi.android.compileSdkVersion compileSdkVersion
+        hiddenapi.android.buildToolsVersion buildToolsVersion
+        preBuild.dependsOn hiddenapi.assembleRelease
+        hiddenapi.preBuild << {
+            def hiddenapiCompiler = hiddenapi.android.libraryVariants[0].javaCompiler
+            def hiddenapiDestPath = hiddenapiCompiler.destinationDir.getAbsolutePath()
             applicationVariants.all { variant ->
                 variant.javaCompiler.with {
-                    dependsOn stubsCompiler
-                    options.bootClasspath = stubsDestPath + File.pathSeparator + options.bootClasspath
+                    dependsOn hiddenapiCompiler
+                    options.bootClasspath = hiddenapiDestPath + File.pathSeparator + options.bootClasspath
+                    if (variant.name == BuilderConstants.RELEASE) {
+                        generateDocs.options.bootClasspath = files(options.bootClasspath.split(File.pathSeparator), destinationDir).asType(List)
+                        generateStubs.options.bootClasspath = generateDocs.options.bootClasspath
+                        compileStubs.classpath = files(options.bootClasspath.split(File.pathSeparator))
+                    }
                 }
             }
         }
     }
 }
+
+task generateDocs(type: Javadoc, dependsOn: 'compileReleaseSources') {
+    source = file('src/main/java')
+    ext.templateDir = file('doclib/template')
+    ext.overviewFile = file('doclib/overview.html')
+    inputs.dir ext.templateDir
+    inputs.file ext.overviewFile
+    title = null
+
+    options {
+        doclet = 'com.google.doclava.Doclava'
+        docletpath = fileTree(dir: 'doclib', include: '**/*.jar').asType(List)
+        jFlags '-Dignore.symbol.file'
+        addFileOption 'templatedir', ext.templateDir
+        addFileOption 'overview', ext.overviewFile
+        addBooleanOption 'nodefaultassets', true
+        addStringOption 'hdf android.whichdoc', 'offline'
+        addStringOption 'federate android', 'http://developer.android.com'
+        addFileOption 'federationapi android', fileTree(dir: 'doclib/api', include: 'android_*.txt').singleFile
+        addFileOption 'proofread', file("$buildDir/docs/proofread.txt")
+        addStringOption 'todo', 'reference/todo.html'
+        fileTree(dir: 'doclib/api', include: 'xposed_*.txt').visit {
+            addStringOption 'since ' + it.file, it.name.replaceFirst(/^xposed_0*(\d*)\.txt$/, '$1')
+        }
+
+        // The sources of the Android SDK are added to the sourcepath.
+        // This ensures that Javadoc can be inherited properly, but it
+        // takes longer and throws a lot of errors (which we ignore here).
+        def sdkSources = file("$android.sdkDirectory/sources/$android.compileSdkVersion")
+        assert sdkSources.exists()
+        addFileOption 'sourcepath', sdkSources
+
+        failOnError = false
+        addStringOption 'Xmaxwarns', '1'
+        addStringOption 'Xmaxerrs', '1'
+        (101..122).each {
+            addBooleanOption 'hide ' + it, true
+        }
+    }
+}
+
+task generateStubs(type: Javadoc, dependsOn: 'compileReleaseSources') {
+    source = file('src/main/java')
+    ext.stubsDir = "$buildDir/api/stub-sources"
+    outputs.dir ext.stubsDir
+    title = null
+
+    options {
+        doclet = 'com.google.doclava.Doclava'
+        docletpath = fileTree(dir: 'doclib', include: '**/*.jar').asType(List)
+        jFlags '-Dignore.symbol.file'
+        addBooleanOption 'nodocs', true
+        addFileOption 'stubs', file(ext.stubsDir)
+        addFileOption 'api', file('doclib/api/current.txt')
+        addBooleanOption 'hide 111', true
+        addBooleanOption 'hide 113', true
+    }
+}
+
+task compileStubs(type: JavaCompile, dependsOn: 'generateStubs') {
+    source = fileTree(generateStubs.ext.stubsDir)
+    destinationDir = file("$buildDir/api/stub-classes")
+    options.compilerArgs += '-XDsuppressNotes'
+}
+
+task jarStubs(type: Jar) {
+    from compileStubs
+    destinationDir = file("$buildDir/api")
+    baseName = 'api'
+}
+
+task jarStubsSource(type: Jar) {
+    from generateStubs.source
+    destinationDir = jarStubs.destinationDir
+    baseName = jarStubs.baseName
+    classifier = 'sources'
+}
+
+task generateAPI(dependsOn: ['generateDocs', 'generateStubs', 'jarStubs', 'jarStubsSource'])
 
 // Make sure that hiddenapistubs are placed before the Android SDK in app.iml
 // as there doesn't seem to be any way to configure this in Android Studio.
@@ -71,10 +155,10 @@ task fixIml {
 
         // Add the new entry just before it
         moduleComponent.children().add(jdkOrderEntryIndex, new Node(null, 'orderEntry',
-                ['type': 'module', 'module-name': 'hiddenapistubs', 'exported': '']));
+                ['type': 'module', 'module-name': 'hiddenapistubs', 'exported': '']))
 
         // Write the fixed iml file
-        def printer = new XmlNodePrinter(new PrintWriter(new FileWriter(imlFile)));
+        def printer = new XmlNodePrinter(new PrintWriter(new FileWriter(imlFile)))
         printer.preserveWhitespace = true
         printer.print(parse)
     }
